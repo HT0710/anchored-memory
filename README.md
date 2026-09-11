@@ -6,20 +6,27 @@ Memory for coding agents that knows when its own notes went out of date.
 
 Requires Python 3.10+, Git, and a POSIX system with `fcntl` for claim mutations and edit recording. No third-party Python dependencies. Windows writes are unsupported.
 
-Stores default to `<repo>/.anchored-memory/`:
+### Fresh installation
+
+Clone the toolkit into a new directory, then set `T` to its absolute path:
+
+```bash
+git clone https://github.com/HT0710/anchored-memory.git
+T="$(cd anchored-memory && pwd)"
+cd /path/to/your/git-project
+```
+
+Replace the target path with the existing Git repository whose notes you want to store. Run claim commands from that repository, not necessarily from the toolkit checkout. No dependency installation is needed.
+
+Add these entries to the target repository's `.gitignore` without replacing existing entries. Stores default to `<repo>/.anchored-memory/`:
 
 ```gitignore
 .anchored-memory/
+.claude/settings.local.json
 ```
 
-Each clone and worktree has an independent store. `ANCHORED_MEMORY_CLAIMS` and `ANCHORED_MEMORY_LOG` deliberately select individual external files; sharing an override shares memory. `ANCHORED_MEMORY_HOME` is retired: a nonempty legacy HOME disables hooks and CLI operations until migration, preventing basename collisions and surprise writes.
-
-```bash
-T="/path/to/anchored-memory"
-python3 "$T/claims.py" migrate-legacy --from "$HOME/.anchored-memory/owned-store"
-```
-
-Migration requires no per-file overrides, copies only `claims.json`, `edits.jsonl`, and `edits.jsonl.1`, preserves originals, refuses an existing destination, takes a cooperative parent lock, and aborts if copied bytes change. Existing old writers must cooperate; fingerprinting cannot stop an uncooperative legacy writer race. Other repos need their own `.gitignore` entry and explicit migration. Do not set retired HOME after migrating.
+Each clone and worktree has an independent store. `ANCHORED_MEMORY_CLAIMS` and `ANCHORED_MEMORY_LOG` deliberately select individual external files; sharing an override shares memory.
+### Hook setup
 
 For Claude Code, merge these hooks into the target repository's ignored `.claude/settings.local.json`; preserve existing settings and hooks. Replace each placeholder with the toolkit's absolute path. Start a new session to receive the capture policy.
 

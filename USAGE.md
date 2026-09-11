@@ -4,14 +4,12 @@ See [README installation](README.md#install) for prerequisites and recall, recor
 
 Stores default to ignored `<repo>/.anchored-memory/`; every clone and worktree is independent. Add `.anchored-memory/` to every tracked repo's `.gitignore`.
 
-`ANCHORED_MEMORY_CLAIMS` and `ANCHORED_MEMORY_LOG` deliberately override individual files; sharing an override shares data. A nonempty retired `ANCHORED_MEMORY_HOME` disables hooks and CLI operations until migration, preventing ambiguous basename routing.
+`ANCHORED_MEMORY_CLAIMS` and `ANCHORED_MEMORY_LOG` deliberately override individual files; sharing an override shares data.
+Set `T` to the toolkit's absolute path and run commands from the target Git repository:
 
 ```bash
 T="/path/to/anchored-memory"
-python3 "$T/claims.py" migrate-legacy --from "$HOME/.anchored-memory/owned-store"
 ```
-
-Migration preserves originals, refuses an existing local store, copies `claims.json`, `edits.jsonl`, and `edits.jsonl.1`, then publishes under a cooperative destination-parent lock. Existing legacy writers must cooperate. Migration does not edit other repos' ignore files.
 
 ## Commands
 
