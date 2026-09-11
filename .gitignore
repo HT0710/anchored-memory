@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.claude/settings.local.json
+
+# per-repo claim stores and edit logs live in the repos being tracked,
+# never here -- but guard against a stray local run writing into the tool dir
+.anchored-memory/
