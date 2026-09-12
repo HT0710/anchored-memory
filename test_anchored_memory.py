@@ -83,6 +83,8 @@ def build_repo(root: Path) -> Path:
         "def replaced():\n" + "".join(f"    old{i} = {i}\n" for i in range(40)) + "    return 'old'\n"
     )
     (repo / "doomed.py").write_text("def vanishes():\n    return 'here'\n")
+    # legacy.py is tracked but not UTF-8; git blobs are bytes, not text
+    (repo / "legacy.py").write_text("def greet():\n    return 'café'\n", encoding="latin-1")
     # guarded.py: the body never changes, but it later moves under an `if`
     (repo / "guarded.py").write_text(
         "import os\n\n\ndef handler(request):\n"
@@ -183,6 +185,13 @@ def main() -> int:
             f"got {v.status}: {v.detail} -- the body is unchanged and still defined",
         )
 
+        v = symbols.compare(repo, "legacy.py", "greet", "HEAD~6")
+        check(
+            "non-UTF-8 source does not crash symbol comparison",
+            v.status == "fresh",
+            f"got {v.status}: {v.detail} -- a tracked blob may hold any bytes",
+        )
+
         v = symbols.compare(repo, "doomed.py", "vanishes", "HEAD~6")
         check("deleted file -> gone", v.status == "gone", f"got {v.status}")
 
@@ -224,6 +233,13 @@ def main() -> int:
 
         r = resolve("stable.py::kept", "2026-01-15")
         check("stable symbol not flagged", r.status == "fresh" and not r.flagged, f"{r.status}")
+
+        r = resolve("legacy.py", "2026-01-15")
+        check(
+            "non-UTF-8 anchor resolves instead of raising",
+            r.status == "fresh" and not r.flagged,
+            f"got {r.status}/{r.flagged} -- one undecodable blob must not sink every verdict",
+        )
 
         r = resolve("doomed.py", "2026-01-15")
         check("deleted path flagged", r.status == "gone" and r.flagged, f"{r.status}/{r.flagged}")

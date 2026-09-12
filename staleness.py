@@ -49,8 +49,9 @@ class Verdict:
 
 
 def git(repo: Path, *args: str) -> tuple[int, str]:
+    # `git show rev:path` streams a blob, and a tracked blob is bytes, not text
     p = subprocess.run(
-        ["git", "-C", str(repo), *args], capture_output=True, text=True
+        ["git", "-C", str(repo), *args], capture_output=True, text=True, errors="replace"
     )
     return p.returncode, p.stdout
 

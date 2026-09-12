@@ -41,7 +41,8 @@ class Span:
 
 
 def git(repo: Path, *args: str) -> tuple[int, str]:
-    p = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    # `git show rev:path` streams a blob, and a tracked blob is bytes, not text
+    p = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, errors="replace")
     return p.returncode, p.stdout
 
 
