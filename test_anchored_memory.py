@@ -102,6 +102,11 @@ def build_repo(root: Path) -> Path:
     (repo / "renamed.py").write_text(
         "def original_name():\n" + "".join(f"    q{i} = {i}\n" for i in range(25)) + "    return 7\n"
     )
+    # klass.py: the renamed symbol is a method, so its class is a rival candidate
+    (repo / "klass.py").write_text(
+        "class Holder:\n    def old_step(self):\n"
+        + "".join(f"        s{i} = {i}\n" for i in range(20)) + "        return 3\n"
+    )
     commit(repo, "2026-01-10T12:00:00", "add renamed.py")
 
     (repo / "churn.py").write_text(
@@ -111,6 +116,10 @@ def build_repo(root: Path) -> Path:
 
     (repo / "renamed.py").write_text(
         "def clearer_name():\n" + "".join(f"    q{i} = {i}\n" for i in range(25)) + "    return 7\n"
+    )
+    (repo / "klass.py").write_text(
+        "class Holder:\n    def new_step(self):\n"
+        + "".join(f"        s{i} = {i}\n" for i in range(20)) + "        return 3\n"
     )
     commit(repo, "2026-02-15T12:00:00", "rename the function")
 
@@ -202,6 +211,13 @@ def main() -> int:
             "rename is not a deletion",
             v.status == "fresh" and "renamed to clearer_name" in v.detail,
             f"got {v.status}: {v.detail} -- a renamed symbol must not read as gone",
+        )
+
+        v = symbols.compare(repo, "klass.py", "Holder.old_step", "HEAD~5")
+        check(
+            "renamed method names the method, not its class",
+            v.status == "fresh" and "renamed to Holder.new_step" in v.detail,
+            f"got {v.status}: {v.detail} -- the enclosing class contains the same body",
         )
 
         v = symbols.compare(repo, "moved.py", "relocatable", "HEAD~2")

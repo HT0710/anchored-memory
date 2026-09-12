@@ -145,6 +145,7 @@ def _find_renamed(repo: Path, path: str, then: Span) -> tuple[str, float] | None
         return None  # too small to identify by content
 
     best: tuple[str, float] | None = None
+    best_rank: tuple[float, int] | None = None
     for name, sp in extract(src).items():
         new = [l.strip() for l in sp.lines if l.strip()]
         if not new:
@@ -152,8 +153,11 @@ def _find_renamed(repo: Path, path: str, then: Span) -> tuple[str, float] | None
         sm = difflib.SequenceMatcher(None, old, new, autojunk=False)
         kept = sum(b.size for b in sm.get_matching_blocks())
         sim = kept / len(old)
-        if sim >= RENAME_SIMILARITY and (best is None or sim > best[1]):
-            best = (name, sim)
+        # an enclosing class contains its method's body, so it ties on
+        # similarity; break the tie toward the smaller, more specific symbol
+        rank = (sim, -len(new))
+        if sim >= RENAME_SIMILARITY and (best_rank is None or rank > best_rank):
+            best, best_rank = (name, sim), rank
     return best
 
 
