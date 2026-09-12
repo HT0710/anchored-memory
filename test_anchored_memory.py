@@ -83,6 +83,8 @@ def build_repo(root: Path) -> Path:
         "def replaced():\n" + "".join(f"    old{i} = {i}\n" for i in range(40)) + "    return 'old'\n"
     )
     (repo / "doomed.py").write_text("def vanishes():\n    return 'here'\n")
+    # single.py ends without a newline: a real file, one real line
+    (repo / "single.py").write_text("x = 1")
     # legacy.py is tracked but not UTF-8; git blobs are bytes, not text
     (repo / "legacy.py").write_text("def greet():\n    return 'café'\n", encoding="latin-1")
     # guarded.py: the body never changes, but it later moves under an `if`
@@ -233,6 +235,13 @@ def main() -> int:
 
         r = resolve("stable.py::kept", "2026-01-15")
         check("stable symbol not flagged", r.status == "fresh" and not r.flagged, f"{r.status}")
+
+        r = resolve("single.py", "2026-01-15")
+        check(
+            "file without a trailing newline is present, not absent",
+            r.status == "fresh" and "of 1 lines" in r.detail,
+            f"got {r.status}: {r.detail} -- its one line has no newline to count",
+        )
 
         r = resolve("legacy.py", "2026-01-15")
         check(

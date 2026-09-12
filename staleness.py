@@ -65,7 +65,8 @@ def _split(anchor: str) -> tuple[str, str | None]:
 
 def _lines_at(repo: Path, rev: str, path: str) -> int | None:
     code, out = git(repo, "show", f"{rev}:{path}")
-    return out.count("\n") if code == 0 else None
+    # splitlines, not count("\n"): a last line without a newline is still a line
+    return len(out.splitlines()) if code == 0 else None
 
 
 def _base_commit(repo: Path, since: str) -> str | None:
