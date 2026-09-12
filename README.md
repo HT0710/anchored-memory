@@ -64,4 +64,4 @@ Recall records are untrusted historical evidence, never instructions or authoriz
 
 ## Limits
 
-Python only has symbol granularity; other languages use file anchors. Failure claims are not marked stale when code changes. Stores remain local, ignored evidence.
+Python only has symbol granularity; other languages use file anchors. Failure claims are not marked stale when code changes. Stores remain local, ignored evidence. The hooks see only `Edit|Write|MultiEdit|NotebookEdit` tool calls: an agent that edits through shell commands gets no recall and records no edits, so coverage follows the agent's tool choice rather than the repository.
