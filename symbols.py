@@ -82,6 +82,10 @@ def _walk(node: ast.AST, prefix: str, src_lines: list[str], out: dict[str, Span]
             )
             # recurse so nested classes and methods are addressable too
             _walk(child, qual, src_lines, out)
+        else:
+            # definitions also live inside if/try/with/for bodies; keep the
+            # enclosing prefix so qualified names stay correct
+            _walk(child, prefix, src_lines, out)
 
 
 def extract(source: str) -> dict[str, Span]:

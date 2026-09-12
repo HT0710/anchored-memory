@@ -83,6 +83,11 @@ def build_repo(root: Path) -> Path:
         "def replaced():\n" + "".join(f"    old{i} = {i}\n" for i in range(40)) + "    return 'old'\n"
     )
     (repo / "doomed.py").write_text("def vanishes():\n    return 'here'\n")
+    # guarded.py: the body never changes, but it later moves under an `if`
+    (repo / "guarded.py").write_text(
+        "import os\n\n\ndef handler(request):\n"
+        + "".join(f"    step{i} = {i}\n" for i in range(10)) + "    return request\n"
+    )
     # grown.py tests that ADDING lines is not a rewrite
     (repo / "grown.py").write_text(
         "def small():\n" + "".join(f"    a{i} = {i}\n" for i in range(20)) + "    return 0\n"
@@ -120,6 +125,10 @@ def build_repo(root: Path) -> Path:
     commit(repo, "2026-02-25T12:00:00", "relocate and drop a common name")
 
     (repo / "doomed.py").unlink()
+    (repo / "guarded.py").write_text(
+        "import os\n\n\nif os.name == \"posix\":\n    def handler(request):\n"
+        + "".join(f"        step{i} = {i}\n" for i in range(10)) + "        return request\n"
+    )
     (repo / "grown.py").write_text(
         "def small():\n" + "".join(f"    a{i} = {i}\n" for i in range(20)) + "    return 0\n"
         + "\n\ndef added_later():\n" + "".join(f"    b{i} = {i}\n" for i in range(60)) + "    return 9\n"
@@ -158,6 +167,20 @@ def main() -> int:
             "growth is NOT a rewrite",
             v.status == "fresh",
             f"got {v.status}: appending must not invalidate untouched code",
+        )
+
+        nested = symbols.extract(
+            "if flag:\n    def f():\n        pass\n"
+            "class C:\n    with ctx:\n        def m(self):\n            pass\n"
+        )
+        check("defs inside if/with blocks are addressable",
+              set(nested) == {"f", "C", "C.m"}, f"got {set(nested)}")
+
+        v = symbols.compare(repo, "guarded.py", "handler", "HEAD~6")
+        check(
+            "indenting a def under a guard is not a deletion",
+            v.status == "fresh",
+            f"got {v.status}: {v.detail} -- the body is unchanged and still defined",
         )
 
         v = symbols.compare(repo, "doomed.py", "vanishes", "HEAD~6")
