@@ -498,6 +498,42 @@ def main() -> int:
         data = json.loads(concurrent.read_text())
         check("concurrent adds all succeed", all(p.returncode == 0 for p in procs), str(results))
         check("concurrent adds retain unique claims and IDs", len(data["claims"]) == 8 and len({c["id"] for c in data["claims"]}) == 8, str(data))
+        # `./f.py` is a valid way to name `f.py`; both must survive add -> recall.
+        roundtrip = Path(td) / "roundtrip-claims.json"
+        rt_env = {**os.environ, "ANCHORED_MEMORY_CLAIMS": str(roundtrip), "ANCHORED_MEMORY_HOME": ""}
+        rt_payload = json.dumps({"cwd": str(repo), "tool_name": "Edit",
+                                 "tool_input": {"file_path": str(repo / "stable.py")}})
+        p = subprocess.run(
+            [sys.executable, str(HERE / "claims.py"), "add", "--kind", "decision",
+             "--anchor", "./stable.py", "--text", "DOT-ROUNDTRIP"], cwd=repo,
+            capture_output=True, text=True, env=rt_env,
+        )
+        check("noncanonical anchor add succeeds", p.returncode == 0, p.stderr)
+        stored = json.loads(roundtrip.read_text())["claims"][0]["anchor"]
+        check("noncanonical anchor stored canonical", stored == "stable.py", stored)
+        pr = subprocess.run([sys.executable, str(HERE / "inject_context.py")], input=rt_payload,
+                            capture_output=True, text=True, env=rt_env)
+        check("noncanonical anchor survives add to recall", "DOT-ROUNDTRIP" in pr.stdout, pr.stdout)
+        p = subprocess.run(
+            [sys.executable, str(HERE / "claims.py"), "add", "--kind", "decision",
+             "--anchor", "stable.py", "--text", "DOT-ROUNDTRIP"], cwd=repo,
+            capture_output=True, text=True, env=rt_env,
+        )
+        check("canonical form dedupes against stored noncanonical add",
+              p.returncode == 0 and "duplicate c1" in p.stdout, p.stdout + p.stderr)
+        # stores written before normalization keep noncanonical anchors; recall must still match.
+        legacy_anchor = Path(td) / "legacy-anchor-claims.json"
+        legacy_anchor.write_text(json.dumps({"claims": [
+            {"id": "c1", "kind": "decision", "text": "LEGACY-DOT", "anchor": "./stable.py",
+             "valid_from": "2026-01-15", "state": "active"},
+        ]}))
+        pr = subprocess.run(
+            [sys.executable, str(HERE / "inject_context.py")], input=rt_payload,
+            capture_output=True, text=True,
+            env={**os.environ, "ANCHORED_MEMORY_CLAIMS": str(legacy_anchor), "ANCHORED_MEMORY_HOME": ""},
+        )
+        check("pre-existing noncanonical anchor still recalls", "LEGACY-DOT" in pr.stdout, pr.stdout)
+
         p = claim("supersede", "c2", "--by", "c3")
         check("supersede mutation succeeds", p.returncode == 0, p.stderr)
         p = claim("revoke", "c3")

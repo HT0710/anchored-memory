@@ -187,6 +187,15 @@ def split_anchor(anchor: str) -> tuple[str, str | None]:
     return anchor, None
 
 
+def normalize_anchor(anchor: str) -> str:
+    """`./f.py` and `f.py` name one place; recall matches the canonical form only."""
+    path, sym = split_anchor(anchor)
+    if not path:
+        return anchor
+    path = os.path.normpath(path)
+    return f"{path}::{sym}" if sym else path
+
+
 def validate_anchor(repo: Path, anchor: str) -> tuple[bool, str]:
     """
     Does the anchor point at something git knows about right now?
@@ -217,11 +226,12 @@ def cmd_add(args, repo: Path) -> int:
     text = args.text.strip()
     if not text:
         sys.exit("error: --text must not be blank")
-    ok, why = validate_anchor(repo, args.anchor)
+    anchor = normalize_anchor(args.anchor)
+    ok, why = validate_anchor(repo, anchor)
     if not ok and "safe repository-relative" in why:
         sys.exit(f"error: {why}")
     if not ok and not args.force:
-        print(f"anchor: {args.anchor}\n  {why}")
+        print(f"anchor: {anchor}\n  {why}")
         if "never seen" in why:
             return sys.exit("refusing to add; pass --force if the path is right")
         print("  (adding anyway -- a claim about deleted code is still a claim)")
@@ -237,15 +247,15 @@ def cmd_add(args, repo: Path) -> int:
         normalized = " ".join(text.split())
         for existing in claims:
             if (existing.get("state") == "active" and existing.get("kind") == args.kind
-                    and existing.get("anchor") == args.anchor
+                    and existing.get("anchor") == anchor
                     and " ".join(existing.get("text", "").split()) == normalized):
-                print(f"duplicate {existing.get('id')} ({args.kind}) -> {args.anchor}")
+                print(f"duplicate {existing.get('id')} ({args.kind}) -> {anchor}")
                 return 0
         claim = {
             "id": next_id(claims),
             "kind": args.kind,
             "text": text,
-            "anchor": args.anchor,
+            "anchor": anchor,
             "valid_from": vf,
             "state": "active",
             "source": args.source,

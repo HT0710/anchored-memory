@@ -109,7 +109,8 @@ def main() -> int:
         relative = resolve_path(repo, cwd, file_path)
         if relative is None:
             return 0
-        matched = [claim for claim in load_claims(repo) if claim["anchor"].partition("::")[0] == relative]
+        matched = [claim for claim in load_claims(repo)
+                   if os.path.normpath(claim["anchor"].partition("::")[0]) == relative]
         if not matched:
             return 0
         from staleness import resolve
