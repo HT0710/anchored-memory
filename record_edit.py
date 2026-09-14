@@ -11,7 +11,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from storage import git_dir, legacy_home_requires_migration, local_store_lock, path as storage_path, repo_root
+from storage import git_dir, local_store_lock, path as storage_path, repo_root
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 MAX_BYTES = 64 * 1024 * 1024
@@ -117,7 +117,7 @@ def main() -> int:
         inp = payload.get("tool_input")
         if not isinstance(cwd, str) or not isinstance(inp, dict): return 0
         root = repo_root(Path(cwd))
-        if root is None or legacy_home_requires_migration("edits.jsonl"): return 0
+        if root is None: return 0
         # shell edits are found by comparing the worktree, never by parsing the command
         paths = [] if tool == "Bash" else relative_paths(root, cwd, inp)
         if tool != "Bash" and not paths: return 0

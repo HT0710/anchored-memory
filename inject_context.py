@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-from storage import legacy_home_requires_migration, path as storage_path, repo_root
+from storage import path as storage_path, repo_root
 
 BUDGET_CHARS = 1600
 MAX_CLAIMS = 4
@@ -34,8 +34,6 @@ def valid_claim(claim: object) -> bool:
 
 
 def load_claims(repo: Path) -> list[dict]:
-    if legacy_home_requires_migration("claims.json"):
-        return []
     try:
         data = json.loads(storage_path(repo, "claims.json").read_text())
         claims = data.get("claims", []) if isinstance(data, dict) else data

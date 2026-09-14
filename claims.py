@@ -24,15 +24,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from storage import local_store_lock, path as storage_path, repo_root as find_repo_root, require_claim_store
+from storage import local_store_lock, path as storage_path, repo_root as find_repo_root
 
 try:
     import fcntl
@@ -54,10 +52,6 @@ def repo_root(start: Path | None = None) -> Path:
     return root
 
 
-def check_legacy(repo: Path) -> None:
-    require_claim_store(repo)
-
-
 def valid_claim(claim: object) -> bool:
     if not isinstance(claim, dict):
         return False
@@ -72,59 +66,6 @@ def valid_claim(claim: object) -> bool:
         return False
     path, _ = split_anchor(claim["anchor"])
     return not Path(path).is_absolute() and ".." not in Path(path).parts
-
-
-def migrate_legacy(args, repo: Path) -> int:
-    if os.environ.get("ANCHORED_MEMORY_CLAIMS") or os.environ.get("ANCHORED_MEMORY_LOG"):
-        sys.exit("error: migration requires ANCHORED_MEMORY_CLAIMS and ANCHORED_MEMORY_LOG unset")
-    source = Path(args.source).expanduser().resolve()
-    destination = repo / ".anchored-memory"
-    files = [name for name in ("claims.json", "edits.jsonl", "edits.jsonl.1") if (source / name).is_file()]
-    if not files:
-        sys.exit("error: legacy source has no supported files")
-    extras = sorted(p.name for p in source.iterdir() if p.name not in files)
-    if extras:
-        print("extra source files not migrated: " + ", ".join(extras), file=sys.stderr)
-    if "claims.json" in files:
-        try:
-            data = json.loads((source / "claims.json").read_text())
-            records = data.get("claims") if isinstance(data, dict) else data
-            if not isinstance(records, list) or not all(valid_claim(c) for c in records):
-                raise ValueError("invalid claims")
-        except (OSError, json.JSONDecodeError, ValueError) as e:
-            sys.exit(f"error: invalid legacy claims: {e}")
-    snapshots = {name: (source / name).read_bytes() for name in files}
-    with local_store_lock(repo):
-        try:
-            destination.lstat()
-        except FileNotFoundError:
-            pass
-        else:
-            sys.exit(f"error: destination exists: {destination}")
-        stage = Path(tempfile.mkdtemp(prefix=".anchored-memory.migrate-", dir=destination.parent))
-        try:
-            for name, content in snapshots.items():
-                shutil.copyfile(source / name, stage / name)
-                if (source / name).read_bytes() != content or (stage / name).read_bytes() != content:
-                    raise OSError(f"source changed while copying: {name}")
-            if any((source / name).read_bytes() != content for name, content in snapshots.items()):
-                raise OSError("source changed during migration")
-            if "claims.json" in files:
-                staged = json.loads((stage / "claims.json").read_text())
-                staged_claims = staged.get("claims") if isinstance(staged, dict) else staged
-                if not isinstance(staged_claims, list) or not all(valid_claim(c) for c in staged_claims):
-                    raise ValueError("staged claims invalid")
-            try:
-                destination.lstat()
-            except FileNotFoundError:
-                stage.rename(destination)
-            else:
-                raise FileExistsError(f"destination exists: {destination}")
-        except Exception as e:
-            shutil.rmtree(stage, ignore_errors=True)
-            sys.exit(f"error: migration failed: {e}")
-    print(f"migrated {', '.join(files)} to {destination}; originals preserved")
-    return 0
 
 
 def load(repo: Path) -> list[dict]:
@@ -400,14 +341,8 @@ def main() -> int:
     r.add_argument("--note", default=None)
     r.set_defaults(fn=cmd_revoke)
 
-    m = sub.add_parser("migrate-legacy", help="copy an owned legacy store into this repo")
-    m.add_argument("--from", dest="source", required=True, help="exact legacy store directory")
-    m.set_defaults(fn=migrate_legacy)
-
     args = ap.parse_args()
     repo = repo_root()
-    if args.cmd != "migrate-legacy":
-        check_legacy(repo)
     return args.fn(args, repo)
 
 

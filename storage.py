@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -30,11 +29,6 @@ def path(repo: Path, name: str) -> Path:
     return Path(override).expanduser() if override else repo / ".anchored-memory" / name
 
 
-def legacy_home_requires_migration(name: str) -> bool:
-    override = os.environ.get(f"ANCHORED_MEMORY_{'CLAIMS' if name == 'claims.json' else 'LOG'}")
-    return bool(os.environ.get("ANCHORED_MEMORY_HOME")) and not bool(override)
-
-
 def git_dir(repo: Path) -> Path:
     """Per-worktree git directory: `.git`, or wherever a worktree's `.git` file points."""
     git = repo / ".git"
@@ -47,7 +41,7 @@ def git_dir(repo: Path) -> Path:
 
 @contextmanager
 def local_store_lock(repo: Path):
-    """Serialize default-store migration, mutations, and recording in one repo."""
+    """Serialize claim mutations and recording in one repo."""
     if fcntl is None:
         raise OSError("POSIX fcntl locking required")
     lock_path = git_dir(repo) / "anchored-memory.lock"
@@ -57,8 +51,3 @@ def local_store_lock(repo: Path):
             yield
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
-
-
-def require_claim_store(repo: Path) -> None:
-    if legacy_home_requires_migration("claims.json"):
-        sys.exit("error: ANCHORED_MEMORY_HOME is retired; run migrate-legacy or set ANCHORED_MEMORY_CLAIMS")
