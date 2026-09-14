@@ -345,6 +345,9 @@ def main() -> int:
               and sorted(recalls[0]["claims"]) == ["c1", "c2"] and recalls[0]["chars"] == len(ctx),
               str(recalls))
         check("recall log never creates a store in the repo", not (repo / ".anchored-memory").exists())
+        notice = json.loads(out).get("systemMessage", "")
+        check("user sees which claims were recalled",
+              '"churn.py"' in notice and '"c1"' in notice and '"c2"' in notice, notice)
         check("stale decision renders JSON staleness", '"staleness":"rewritten"' in ctx and "D-STALE" in ctx)
         check("failure exemption preserves unflagged state", "F-EXEMPT" in ctx and '"flagged":false' in ctx)
         check("recall warning is fixed", ctx.startswith("WARNING: Historical claims"))
@@ -411,6 +414,14 @@ def main() -> int:
         pr = subprocess.run([sys.executable, str(HERE / "inject_context.py")], input=payload, capture_output=True, text=True, env={**os.environ, "ANCHORED_MEMORY_CLAIMS": str(hostile)})
         hostile_ctx = json.loads(pr.stdout)["hookSpecificOutput"]["additionalContext"]
         check("hostile text stays escaped JSON data", "\\n" in hostile_ctx and "\\u003c|system|\\u003e" in hostile_ctx)
+        # the notice reaches the user's terminal, so a tampered id must not carry escapes
+        esc_store = Path(td) / "esc" / "claims.json"
+        esc_store.parent.mkdir()
+        esc_store.write_text(json.dumps({"claims": [{"id": "\x1b[2Jfake", "kind": "decision", "text": "t", "anchor": "churn.py", "valid_from": "2026-01-15", "state": "active"}]}))
+        pr = subprocess.run([sys.executable, str(HERE / "inject_context.py")], input=payload, capture_output=True, text=True, env={**os.environ, "ANCHORED_MEMORY_CLAIMS": str(esc_store)})
+        esc_notice = json.loads(pr.stdout).get("systemMessage", "") if pr.stdout.strip() else ""
+        check("recall notice cannot carry terminal escapes",
+              "\x1b" not in esc_notice and "u001b" in esc_notice, repr(esc_notice))
 
         relative_payload = json.dumps({"cwd": str(repo), "tool_name": "Edit", "tool_input": {"file_path": "churn.py"}})
         pr = subprocess.run([sys.executable, str(HERE / "inject_context.py")], input=relative_payload, capture_output=True, text=True, cwd=Path(td), env={**os.environ, "ANCHORED_MEMORY_CLAIMS": str(store)})
@@ -671,6 +682,44 @@ def main() -> int:
         (shell / "gone.py").unlink()
         got = record()
         check("shell deletion of a tracked file is logged", got == ["Bash:gone.py"], str(got))
+
+        # report: evidence for the keep/cut/archive review, read from existing logs only
+        rep = Path(td) / "report"
+        rep.mkdir()
+        (rep / "claims.json").write_text(json.dumps({"claims": [
+            {"id": "c1", "kind": "decision", "text": "D-STALE", "anchor": "churn.py::replaced", "valid_from": "2026-01-15", "state": "active"},
+            {"id": "c2", "kind": "failure", "text": "F-EXEMPT", "anchor": "churn.py", "valid_from": "2026-01-15", "state": "active"},
+            {"id": "c3", "kind": "decision", "text": "gone", "anchor": "stable.py", "valid_from": "2026-01-15", "state": "revoked"},
+            {"id": "c4", "kind": "convention", "text": "old", "anchor": "stable.py", "valid_from": "2026-01-15", "state": "superseded"},
+        ]}))
+        (rep / "recalls.jsonl").write_text("".join(json.dumps(r) + "\n" for r in [
+            {"ts": "2026-09-15T01:00:00+00:00", "session": "s1", "path": "churn.py", "claims": ["c1", "c2"], "chars": 500},
+            {"ts": "2026-09-16T01:00:00+00:00", "session": "s2", "path": "churn.py", "claims": ["c1"], "chars": 300},
+            {"ts": "2026-09-16T02:00:00+00:00", "session": "s2", "path": "churn.py", "claims": ["c9"], "chars": 100},
+        ]) + "not json\n")
+        (rep / "edits.jsonl").write_text("".join(json.dumps(r) + "\n" for r in [
+            {"ts": "2026-09-15T00:59:00+00:00", "tool": "Edit", "path": "churn.py"},
+            {"ts": "2026-09-15T03:00:00+00:00", "tool": "Write", "path": "stable.py"},
+            {"ts": "2026-09-15T04:00:00+00:00", "tool": "Bash", "path": "new.py"},
+        ]))
+        p = subprocess.run(
+            [sys.executable, str(HERE / "claims.py"), "report"], cwd=repo, capture_output=True, text=True,
+            env={**os.environ, "ANCHORED_MEMORY_CLAIMS": str(rep / "claims.json"), "ANCHORED_MEMORY_LOG": str(rep / "edits.jsonl")},
+        )
+        out = p.stdout
+        check("report exits 0 and skips malformed log lines", p.returncode == 0, p.stderr)
+        for want in ("4 total: 2 active, 1 superseded, 1 revoked",
+                     "3 across 2 session(s), 3 distinct claim(s), 900 chars (~225 tokens)",
+                     "3 recorded: 2 via edit tools, 1 via shell",
+                     "1 of 2 edit-tool edits (50%) touched a file with an active claim",
+                     "1 of 2 active claims flagged stale now"):
+            check(f"report states: {want}", want in out, out)
+        worksheet = out.split("review:", 1)[-1]
+        check("worksheet lists recalled claims, most shown first",
+              "  c1  " in worksheet and worksheet.index("  c1  ") < worksheet.index("  c2  ") < worksheet.index("  c9  ")
+              and "shown 2x" in worksheet and "D-STALE" in worksheet and "(not in store)" in worksheet
+              and "[ ] useful" in worksheet, out)
+        check("report prints the fixed verdict rules", "keep " in out and "cut " in out and "archive " in out, out)
 
     print(f"\n{len(PASSED)} checks passed")
     return 0

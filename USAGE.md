@@ -2,7 +2,7 @@
 
 See [README installation](README.md#install) for prerequisites and recall, recorder, and SessionStart capture hooks.
 
-Stores default to ignored `<repo>/.anchored-memory/`; every clone and worktree is independent. Add `.anchored-memory/` to every tracked repo's `.gitignore`. `recalls.jsonl`, beside the claims file, records which claim ids recall injected, into which file and session; it holds no claim text and never leaves the machine.
+Stores default to ignored `<repo>/.anchored-memory/`; every clone and worktree is independent. Add `.anchored-memory/` to every tracked repo's `.gitignore`. `recalls.jsonl`, beside the claims file, records which claim ids recall injected, into which file and session; it holds no claim text and never leaves the machine. Each recall also shows you a one-line notice with the claim ids; the model does not see it. `claims.py report` summarises the claim store and both logs, with a worksheet for judging each recalled claim.
 
 `ANCHORED_MEMORY_CLAIMS` and `ANCHORED_MEMORY_LOG` deliberately override individual files; sharing an override shares data.
 Set `T` to the toolkit's absolute path and run commands from the target Git repository:
@@ -20,6 +20,7 @@ python3 "$T/claims.py" add --kind failure --anchor "path/to/f.py::Class.method" 
 python3 "$T/claims.py" add --kind convention --anchor README.md --anchor USAGE.md --text "one fact, recalled from both files"
 python3 "$T/claims.py" supersede c3 --by c9
 python3 "$T/claims.py" revoke c3 --note "why"
+python3 "$T/claims.py" report
 python3 "$T/symbols.py" list path/to/f.py
 python3 "$T/test_anchored_memory.py"
 ```

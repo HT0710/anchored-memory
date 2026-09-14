@@ -17,6 +17,7 @@ cannot be staleness-checked, so the store refuses it.
     ./claims.py check                 # staleness for every active claim
     ./claims.py supersede c3 --by c9
     ./claims.py revoke c3 --note "never actually true"
+    ./claims.py report                # evidence for the keep/cut/archive review
 """
 
 from __future__ import annotations
@@ -26,6 +27,8 @@ import json
 import os
 import subprocess
 import sys
+import textwrap
+from collections import Counter
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -238,6 +241,95 @@ def cmd_list(args, repo: Path) -> int:
     return 0
 
 
+def read_jsonl(path: Path) -> list[dict]:
+    """Log rows, skipping anything malformed: a report must survive a damaged log."""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    rows = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+def live_at(claim: dict, ts: str) -> bool:
+    """Was this claim active when `ts` happened? A missing added_at counts as always there."""
+    added = claim.get("added_at")
+    if isinstance(added, str) and added > ts:
+        return False
+    return claim["state"] == "active" or str(claim.get("valid_to", "")) >= ts[:10]
+
+
+def cmd_report(args, repo: Path) -> int:
+    """Evidence for the keep/cut/archive review, read from existing local logs only.
+    Numbers describe exposure and cost; whether a claim helped needs a human verdict,
+    so the second half is a worksheet, not a score."""
+    from staleness import resolve  # local import, as in check
+
+    claims = load(repo)
+    by_id = {c["id"]: c for c in claims}
+    recalls = read_jsonl(store_path(repo).with_name("recalls.jsonl"))
+    log = storage_path(repo, "edits.jsonl")
+    edits = read_jsonl(log.with_suffix(".jsonl.1")) + read_jsonl(log)
+
+    def tally(key: str) -> str:
+        counts = Counter(str(c.get(key, "unknown")) for c in claims)
+        return ", ".join(f"{k} {n}" for k, n in sorted(counts.items())) or "none"
+
+    shown: Counter = Counter()
+    days: dict[str, list[str]] = {}
+    for r in recalls:
+        for cid in map(str, r["claims"] if isinstance(r.get("claims"), list) else []):
+            shown[cid] += 1
+            days.setdefault(cid, []).append(str(r.get("ts", ""))[:10])
+    sessions = {str(r.get("session")) for r in recalls}
+    chars = sum(r["chars"] for r in recalls if isinstance(r.get("chars"), int))
+    # recall only ever fires on edit-tool calls, so only those gave it a chance
+    tool_edits = [e for e in edits if e.get("tool") != "Bash"]
+    anchors = [(os.path.normpath(c["anchor"].partition("::")[0]), c) for c in claims]
+    hits = sum(1 for e in tool_edits
+               if any(p == e.get("path") and live_at(c, str(e.get("ts", ""))) for p, c in anchors))
+    pct = f"{hits * 100 // len(tool_edits)}%" if tool_edits else "n/a"
+    active = [c for c in claims if c["state"] == "active"]
+    flagged = sum(1 for c in active if resolve(repo, c).flagged)
+    states = Counter(c["state"] for c in claims)
+
+    print(f"anchored-memory report: {repo.name}\n")
+    print(f"claims    {len(claims)} total: {states['active']} active, "
+          f"{states['superseded']} superseded, {states['revoked']} revoked")
+    print(f"          kinds: {tally('kind')} | sources: {tally('source')}")
+    print(f"recalls   {len(recalls)} across {len(sessions)} session(s), {len(shown)} distinct claim(s), "
+          f"{chars:,} chars (~{chars // 4:,} tokens)")
+    print(f"edits     {len(edits)} recorded: {len(tool_edits)} via edit tools, "
+          f"{len(edits) - len(tool_edits)} via shell (shell edits get no recall)")
+    print(f"          {hits} of {len(tool_edits)} edit-tool edits ({pct}) touched a file with an active claim")
+    print(f"stale     {flagged} of {len(active)} active claims flagged stale now")
+
+    print("\nreview: mark each recalled claim useful / noise / wrong")
+    if not shown:
+        print("  (no recalls yet)")
+    for cid, n in sorted(shown.items(), key=lambda kv: (-kv[1], kv[0])):
+        c = by_id.get(cid)
+        first, last = min(days[cid]), max(days[cid])
+        head = f"  {cid}  {c['kind']}  {c['anchor']}" if c else f"  {cid}  (not in store)"
+        print(f"{head}  shown {n}x  {first}..{last}")
+        if c:
+            print(f"      {textwrap.shorten(c['text'], 160, placeholder=' ...')}")
+        print("      [ ] useful  [ ] noise  [ ] wrong")
+
+    print("\nverdict rules, fixed before the pilot:")
+    print("  keep     claims marked useful were shown >= 2 times in total, and noise is at most half of all recalls")
+    print("  cut      recall never helped, but some saved claims are still worth keeping as notes")
+    print("  archive  neither recall nor the saved claims were worth their cost")
+    return 0
+
+
 def cmd_supersede(args, repo: Path) -> int:
     with mutation_lock(repo):
         claims = load(repo)
@@ -340,6 +432,9 @@ def main() -> int:
     r.add_argument("id")
     r.add_argument("--note", default=None)
     r.set_defaults(fn=cmd_revoke)
+
+    rp = sub.add_parser("report", help="usage evidence for the keep/cut/archive review")
+    rp.set_defaults(fn=cmd_report)
 
     args = ap.parse_args()
     repo = repo_root()

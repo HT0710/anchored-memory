@@ -90,10 +90,9 @@ def render(rows: list[tuple[dict, object]], rel: str) -> str:
     return prefix + ",".join(records) + suffix
 
 
-def log_recall(repo: Path, payload: dict, rel: str, rows: list[tuple[dict, object]], context: str) -> None:
+def log_recall(repo: Path, payload: dict, rel: str, shown: list[str], context: str) -> None:
     """Which claims reached the agent, for later review: ids and sizes, no claim text.
     Lives beside the claims store it read, so it follows the same override."""
-    shown = [claim["id"] for claim, _ in rows if f'"id":{encode(claim["id"])}' in context]
     row = {"ts": datetime.now(timezone.utc).isoformat(), "session": payload.get("session_id"),
            "tool": payload.get("tool_name"), "path": rel, "claims": shown, "chars": len(context)}
     # ponytail: unrotated one-line appends; rotate like edits.jsonl if it ever grows large
@@ -133,9 +132,14 @@ def main() -> int:
                 continue
         rows.sort(key=lambda row: STATUS_ORDER.get(row[1].status, 9))
         context = render(rows[:MAX_CLAIMS], relative)
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": context}}))
+        # render may drop a claim whose metadata cannot fit; report only what reached the agent
+        shown = [claim["id"] for claim, _ in rows[:MAX_CLAIMS] if f'"id":{encode(claim["id"])}' in context]
+        # systemMessage reaches the user, not the model; JSON-encoding keeps a tampered
+        # id or path from putting terminal escapes on screen
+        notice = f"anchored-memory recalled {len(shown)} claim(s) for {encode(relative)}: {encode(shown)}"
+        print(json.dumps({"systemMessage": notice, "hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": context}}))
         # after the print: a logging failure must never cost the agent its recall
-        log_recall(repo, payload, relative, rows[:MAX_CLAIMS], context)
+        log_recall(repo, payload, relative, shown, context)
     except Exception:
         pass
     return 0

@@ -6,6 +6,8 @@ Notable changes to Anchored Memory. Versions follow [Semantic Versioning](https:
 
 ### Added
 - Recall log: `recalls.jsonl`, beside the claims file, records which claim ids each recall injected, into which file and session, and how many characters. No claim text.
+- Recall notice: each recall shows the user a one-line message naming the claim ids. The model does not see it.
+- `claims.py report`: claims by state, kind and source; recalls, sessions and characters; how many edit-tool edits touched a file with an active claim; stale flags; and a worksheet for marking each recalled claim useful, noise or wrong.
 
 ## [0.1.0] - 2026-09-15
 
