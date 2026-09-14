@@ -50,6 +50,14 @@ For Claude Code, merge these hooks into the target repository's ignored `.claude
 
 SessionStart supplies at most 1,200 characters of capture guidance to the existing working agent. Capture is best-effort: the policy requests at most three evidenced claims per task, each at most 400 characters. These are advisory limits, not hard token budgets. No separate extractor/model call is added; saving claims still consumes agent tokens and tool calls. General usefulness and token savings remain unproven.
 
+## Updates
+
+Releases are announced on GitHub: on the repository page, choose **Watch → Custom → Releases**. [CHANGELOG.md](CHANGELOG.md) lists what changed and any setup steps. To update, pull the toolkit checkout; stores in your repositories are not touched:
+
+```bash
+git -C "$T" pull --ff-only
+```
+
 ## Use
 
 ```bash
