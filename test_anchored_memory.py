@@ -285,6 +285,18 @@ def main() -> int:
             r.status == "unassessable",
             f"got {r.status} -- an unverifiable anchor must not read as verified",
         )
+        check(
+            "claim older than history says so, not 'path absent'",
+            "predates repository history" in r.detail and "path absent" not in r.detail,
+            f"got {r.detail} -- the file may well have existed; git just cannot see that far",
+        )
+
+        r = resolve("renamed.py", "2026-01-05")
+        check(
+            "file created after the claim date still reads as absent",
+            r.status == "unassessable" and "path absent at 2026-01-05" in r.detail,
+            f"got {r.status}: {r.detail}",
+        )
 
         # baseline off-by-one: a claim dated the day of the creating commit
         r = resolve("stable.py::kept", "2026-01-01")

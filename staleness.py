@@ -155,11 +155,23 @@ def resolve(repo: Path, claim: dict) -> Verdict:
             # symbol unresolvable (renamed, or not Python): fall through to the
             # file-level rule rather than reporting nothing at all
 
-    size_then = _lines_at(repo, base, path) if base else None
+    if base is None:
+        # No commit on or before valid_from: the claim is older than the
+        # history git holds (a young repo, or history rewritten or republished
+        # since). The file may well have existed -- git cannot see that far.
+        roots = git(repo, "log", "--max-parents=0", "--format=%as", "HEAD")[1].split()
+        earliest = f" (earliest commit {min(roots)})" if roots else ""
+        return Verdict(
+            "unassessable", False,
+            f"claim predates repository history{earliest}; re-add with a later "
+            "--valid-from and supersede this claim",
+        )
+
+    size_then = _lines_at(repo, base, path)
     if not size_then:
-        # The file did not exist at valid_from (claim predates it), or there is
-        # no commit before that date. Reported as its own status: calling this
-        # "fresh" would let an unassessable anchor read as a verified one.
+        # The file did not exist at valid_from: the claim predates it.
+        # Reported as its own status: calling this "fresh" would let an
+        # unassessable anchor read as a verified one.
         return Verdict(
             "unassessable", False,
             f"path absent at {since}; nothing to compare against",
