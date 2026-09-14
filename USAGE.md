@@ -17,6 +17,7 @@ T="/path/to/anchored-memory"
 python3 "$T/claims.py" list
 python3 "$T/claims.py" check
 python3 "$T/claims.py" add --kind failure --anchor "path/to/f.py::Class.method" --valid-from 2026-04-20 --text "tried X here, it broke because Y"
+python3 "$T/claims.py" add --kind convention --anchor README.md --anchor USAGE.md --text "one fact, recalled from both files"
 python3 "$T/claims.py" supersede c3 --by c9
 python3 "$T/claims.py" revoke c3 --note "why"
 python3 "$T/symbols.py" list path/to/f.py

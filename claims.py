@@ -226,15 +226,17 @@ def cmd_add(args, repo: Path) -> int:
     text = args.text.strip()
     if not text:
         sys.exit("error: --text must not be blank")
-    anchor = normalize_anchor(args.anchor)
-    ok, why = validate_anchor(repo, anchor)
-    if not ok and "safe repository-relative" in why:
-        sys.exit(f"error: {why}")
-    if not ok and not args.force:
-        print(f"anchor: {anchor}\n  {why}")
-        if "never seen" in why:
-            return sys.exit("refusing to add; pass --force if the path is right")
-        print("  (adding anyway -- a claim about deleted code is still a claim)")
+    # one fact can concern several files; every anchor must pass before any is written
+    anchors = list(dict.fromkeys(normalize_anchor(a) for a in args.anchor))
+    for anchor in anchors:
+        ok, why = validate_anchor(repo, anchor)
+        if not ok and "safe repository-relative" in why:
+            sys.exit(f"error: {why}")
+        if not ok and not args.force:
+            print(f"anchor: {anchor}\n  {why}")
+            if "never seen" in why:
+                return sys.exit("refusing to add; pass --force if the path is right")
+            print("  (adding anyway -- a claim about deleted code is still a claim)")
 
     vf = args.valid_from or date.today().isoformat()
     try:
@@ -245,27 +247,36 @@ def cmd_add(args, repo: Path) -> int:
     with mutation_lock(repo):
         claims = load(repo)
         normalized = " ".join(text.split())
-        for existing in claims:
-            if (existing.get("state") == "active" and existing.get("kind") == args.kind
-                    and existing.get("anchor") == anchor
-                    and " ".join(existing.get("text", "").split()) == normalized):
-                print(f"duplicate {existing.get('id')} ({args.kind}) -> {anchor}")
-                return 0
-        claim = {
-            "id": next_id(claims),
-            "kind": args.kind,
-            "text": text,
-            "anchor": anchor,
-            "valid_from": vf,
-            "state": "active",
-            "source": args.source,
-            "added_at": datetime.now(timezone.utc).isoformat(),
-        }
-        if args.note:
-            claim["note"] = args.note
-        claims.append(claim)
+        added = []
+        for anchor in anchors:
+            duplicate = next((
+                e for e in claims
+                if e.get("state") == "active" and e.get("kind") == args.kind
+                and e.get("anchor") == anchor
+                and " ".join(e.get("text", "").split()) == normalized
+            ), None)
+            if duplicate is not None:
+                print(f"duplicate {duplicate.get('id')} ({args.kind}) -> {anchor}")
+                continue
+            claim = {
+                "id": next_id(claims),
+                "kind": args.kind,
+                "text": text,
+                "anchor": anchor,
+                "valid_from": vf,
+                "state": "active",
+                "source": args.source,
+                "added_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if args.note:
+                claim["note"] = args.note
+            claims.append(claim)
+            added.append(claim)
+        if not added:
+            return 0
         p = save(repo, claims)
-    print(f"added {claim['id']} ({claim['kind']}) -> {claim['anchor']}")
+    for claim in added:
+        print(f"added {claim['id']} ({claim['kind']}) -> {claim['anchor']}")
     print(f"  {p}")
     return 0
 
@@ -362,7 +373,8 @@ def main() -> int:
 
     a = sub.add_parser("add", help="record a claim")
     a.add_argument("--kind", required=True, choices=KINDS)
-    a.add_argument("--anchor", required=True, help="path or path::symbol")
+    a.add_argument("--anchor", required=True, action="append",
+                   help="path or path::symbol; repeat to attach one fact to several files")
     a.add_argument("--text", required=True)
     a.add_argument("--valid-from", default=None, help="ISO date (default: today)")
     a.add_argument("--source", default="hand", help="hand | mined | agent")

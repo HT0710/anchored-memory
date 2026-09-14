@@ -623,6 +623,24 @@ def main() -> int:
         check("re-dating a superseded claim adds, not dedupes",
               p.returncode == 0 and "added" in p.stdout, p.stdout + p.stderr)
 
+        # one fact, several files: repeatable --anchor writes one claim per anchor
+        multi = ("add", "--kind", "convention", "--anchor", "stable.py", "--anchor", "churn.py",
+                 "--text", "MULTI-ANCHOR")
+        p = claim(*multi)
+        stored = [c for c in json.loads(claim_store.read_text())["claims"] if c["text"] == "MULTI-ANCHOR"]
+        check("repeatable --anchor adds one claim per file",
+              p.returncode == 0 and sorted(c["anchor"] for c in stored) == ["churn.py", "stable.py"],
+              p.stdout + p.stderr)
+        before_multi = claim_store.read_text()
+        p = claim(*multi)
+        check("repeated multi-anchor add dedupes every copy",
+              p.returncode == 0 and p.stdout.count("duplicate") == 2 and claim_store.read_text() == before_multi,
+              p.stdout + p.stderr)
+        p = claim("add", "--kind", "convention", "--anchor", "stable.py", "--anchor", "never_seen.py",
+                  "--text", "ATOMIC-ANCHORS")
+        check("one bad anchor refuses the whole add",
+              p.returncode != 0 and "ATOMIC-ANCHORS" not in claim_store.read_text(), p.stdout + p.stderr)
+
         # SessionStart capture policy remains bounded and silent outside git or on bad input.
         non_git = Path(td) / "non-git"
         non_git.mkdir()
