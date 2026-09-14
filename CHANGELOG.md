@@ -2,6 +2,11 @@
 
 Notable changes to Anchored Memory. Versions follow [Semantic Versioning](https://semver.org/); before 1.0, any release may change the claim store or the hook setup.
 
+## [Unreleased]
+
+### Added
+- Recall log: `recalls.jsonl`, beside the claims file, records which claim ids each recall injected, into which file and session, and how many characters. No claim text.
+
 ## [0.1.0] - 2026-09-15
 
 First tagged release. **Experimental:** general usefulness and token savings remain unproven; see Limits in the README.

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from storage import path as storage_path, repo_root
@@ -89,6 +90,17 @@ def render(rows: list[tuple[dict, object]], rel: str) -> str:
     return prefix + ",".join(records) + suffix
 
 
+def log_recall(repo: Path, payload: dict, rel: str, rows: list[tuple[dict, object]], context: str) -> None:
+    """Which claims reached the agent, for later review: ids and sizes, no claim text.
+    Lives beside the claims store it read, so it follows the same override."""
+    shown = [claim["id"] for claim, _ in rows if f'"id":{encode(claim["id"])}' in context]
+    row = {"ts": datetime.now(timezone.utc).isoformat(), "session": payload.get("session_id"),
+           "tool": payload.get("tool_name"), "path": rel, "claims": shown, "chars": len(context)}
+    # ponytail: unrotated one-line appends; rotate like edits.jsonl if it ever grows large
+    with storage_path(repo, "claims.json").with_name("recalls.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -120,7 +132,10 @@ def main() -> int:
             except Exception:
                 continue
         rows.sort(key=lambda row: STATUS_ORDER.get(row[1].status, 9))
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": render(rows[:MAX_CLAIMS], relative)}}))
+        context = render(rows[:MAX_CLAIMS], relative)
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": context}}))
+        # after the print: a logging failure must never cost the agent its recall
+        log_recall(repo, payload, relative, rows[:MAX_CLAIMS], context)
     except Exception:
         pass
     return 0

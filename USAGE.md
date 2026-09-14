@@ -2,7 +2,7 @@
 
 See [README installation](README.md#install) for prerequisites and recall, recorder, and SessionStart capture hooks.
 
-Stores default to ignored `<repo>/.anchored-memory/`; every clone and worktree is independent. Add `.anchored-memory/` to every tracked repo's `.gitignore`.
+Stores default to ignored `<repo>/.anchored-memory/`; every clone and worktree is independent. Add `.anchored-memory/` to every tracked repo's `.gitignore`. `recalls.jsonl`, beside the claims file, records which claim ids recall injected, into which file and session; it holds no claim text and never leaves the machine.
 
 `ANCHORED_MEMORY_CLAIMS` and `ANCHORED_MEMORY_LOG` deliberately override individual files; sharing an override shares data.
 Set `T` to the toolkit's absolute path and run commands from the target Git repository:

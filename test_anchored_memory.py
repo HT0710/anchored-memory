@@ -337,6 +337,14 @@ def main() -> int:
         out = inject("churn.py")
         check("injects for an anchored file", bool(out.strip()))
         ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        # the recall log sits next to the claims store it read, never in the repo
+        recall_log = store.with_name("recalls.jsonl")
+        recalls = [json.loads(l) for l in recall_log.read_text().splitlines()] if recall_log.exists() else []
+        check("recall is logged beside its claims store",
+              len(recalls) == 1 and recalls[0]["path"] == "churn.py"
+              and sorted(recalls[0]["claims"]) == ["c1", "c2"] and recalls[0]["chars"] == len(ctx),
+              str(recalls))
+        check("recall log never creates a store in the repo", not (repo / ".anchored-memory").exists())
         check("stale decision renders JSON staleness", '"staleness":"rewritten"' in ctx and "D-STALE" in ctx)
         check("failure exemption preserves unflagged state", "F-EXEMPT" in ctx and '"flagged":false' in ctx)
         check("recall warning is fixed", ctx.startswith("WARNING: Historical claims"))
@@ -354,6 +362,7 @@ def main() -> int:
         check("superseded claim filtered", "SUPERSEDED-MUST-NOT-APPEAR" not in ctx)
 
         check("silent for an unanchored file", inject("stable.py").strip() == "")
+        check("silent recall writes no log row", len(recall_log.read_text().splitlines()) == 1)
 
         payload = json.dumps({"cwd": str(repo), "tool_name": "Edit", "tool_input": {"file_path": str(repo / "churn.py")}})
 
