@@ -163,8 +163,9 @@ def resolve(repo: Path, claim: dict) -> Verdict:
         earliest = f" (earliest commit {min(roots)})" if roots else ""
         return Verdict(
             "unassessable", False,
-            f"claim predates repository history{earliest}; re-add with a later "
-            "--valid-from and supersede this claim",
+            # supersede first: an identical active claim would dedupe the re-add
+            f"claim predates repository history{earliest}; supersede it, then "
+            "re-add its text with a later --valid-from",
         )
 
     size_then = _lines_at(repo, base, path)

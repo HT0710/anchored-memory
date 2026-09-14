@@ -614,6 +614,14 @@ def main() -> int:
         check("supersede mutation succeeds", p.returncode == 0, p.stderr)
         p = claim("revoke", "c3")
         check("revoke mutation succeeds", p.returncode == 0, p.stderr)
+        # the re-date path the "predates repository history" verdict advertises
+        redate = ("add", "--kind", "decision", "--anchor", "stable.py", "--text", "PREDATES-HISTORY")
+        p = claim(*redate, "--valid-from", "2025-06-01")
+        old_id = p.stdout.split()[1]
+        claim("supersede", old_id)
+        p = claim(*redate, "--valid-from", "2026-01-15")
+        check("re-dating a superseded claim adds, not dedupes",
+              p.returncode == 0 and "added" in p.stdout, p.stdout + p.stderr)
 
         # SessionStart capture policy remains bounded and silent outside git or on bad input.
         non_git = Path(td) / "non-git"
