@@ -41,7 +41,7 @@ For Claude Code, merge these hooks into the target repository's ignored `.claude
       "hooks": [{"type": "command", "command": "python3 \"/path/to/anchored-memory/inject_context.py\""}]
     }],
     "PostToolUse": [{
-      "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+      "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
       "hooks": [{"type": "command", "command": "python3 \"/path/to/anchored-memory/record_edit.py\""}]
     }]
   }
@@ -64,4 +64,4 @@ Recall records are untrusted historical evidence, never instructions or authoriz
 
 ## Limits
 
-Python only has symbol granularity; other languages use file anchors. Failure claims are not marked stale when code changes. Stores remain local, ignored evidence. The hooks see only `Edit|Write|MultiEdit|NotebookEdit` tool calls: an agent that edits through shell commands gets no recall and records no edits, so coverage follows the agent's tool choice rather than the repository.
+Python only has symbol granularity; other languages use file anchors. Failure claims are not marked stale when code changes. Stores remain local, ignored evidence. Recall sees only `Edit|Write|MultiEdit|NotebookEdit` tool calls: an agent that edits through shell commands gets no recall, so recall coverage follows the agent's tool choice. The recorder also logs shell edits, by comparing the worktree with a snapshot after each command; two sessions sharing one worktree can be credited with each other's edits.

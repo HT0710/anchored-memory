@@ -719,6 +719,52 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(HERE / "record_edit.py")], input=payload, capture_output=True, text=True, env={**os.environ, "ANCHORED_MEMORY_LOG": str(outside_log), "ANCHORED_MEMORY_HOME": ""})
         check("recorder skips outside path before log creation", p.returncode == 0 and not outside_log.exists())
 
+        # shell edits: found by comparing the worktree with a snapshot, never by
+        # parsing command text
+        shell = Path(td) / "shell"
+        shell.mkdir()
+        run(shell, "init", "-q", "-b", "main")
+        (shell / "a.py").write_text("a = 1\n")
+        (shell / "gone.py").write_text("g = 1\n")
+        commit(shell, "2026-01-01T12:00:00", "initial")
+        shell_log = Path(td) / "shell-edits.jsonl"
+        seen = [0]
+
+        def record(tool: str = "Bash", path: str = "") -> list[str]:
+            inp = {"command": "true"} if tool == "Bash" else {"file_path": str(shell / path)}
+            p = subprocess.run(
+                [sys.executable, str(HERE / "record_edit.py")],
+                input=json.dumps({"session_id": "s", "cwd": str(shell), "tool_name": tool, "tool_input": inp}),
+                capture_output=True, text=True,
+                env={**os.environ, "ANCHORED_MEMORY_LOG": str(shell_log), "ANCHORED_MEMORY_HOME": ""},
+            )
+            if p.returncode:
+                check("shell recorder exits 0", False, p.stderr)
+            rows = [json.loads(l) for l in shell_log.read_text().splitlines()] if shell_log.exists() else []
+            new, seen[0] = rows[seen[0]:], len(rows)
+            return sorted(f"{r['tool']}:{r['path']}" for r in new)
+
+        check("first shell command only records a baseline", record() == [])
+        (shell / "a.py").write_text("a = 2\n")
+        (shell / "new.py").write_text("n = 1\n")
+        got = record()
+        check("shell edits to tracked and new files are logged", got == ["Bash:a.py", "Bash:new.py"], str(got))
+        got = record()
+        check("read-only shell command logs nothing", got == [], str(got))
+        (shell / "b.py").write_text("b = 1\n")
+        commit(shell, "2026-01-02T12:00:00", "write and commit in one command")
+        got = record()
+        check("write-and-commit is logged; committing old edits is not",
+              got == ["Bash:b.py"], str(got))
+        (shell / "c.py").write_text("c = 1\n")
+        got = record("Edit", "c.py")
+        check("edit tool still logs its own path", got == ["Edit:c.py"], str(got))
+        got = record()
+        check("edit-tool change is not logged again as a shell edit", got == [], str(got))
+        (shell / "gone.py").unlink()
+        got = record()
+        check("shell deletion of a tracked file is logged", got == ["Bash:gone.py"], str(got))
+
     print(f"\n{len(PASSED)} checks passed")
     return 0
 

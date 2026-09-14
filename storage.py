@@ -35,17 +35,22 @@ def legacy_home_requires_migration(name: str) -> bool:
     return bool(os.environ.get("ANCHORED_MEMORY_HOME")) and not bool(override)
 
 
-@contextmanager
-def local_store_lock(repo: Path):
-    """Serialize default-store migration, mutations, and recording in one repo."""
-    if fcntl is None:
-        raise OSError("POSIX fcntl locking required")
+def git_dir(repo: Path) -> Path:
+    """Per-worktree git directory: `.git`, or wherever a worktree's `.git` file points."""
     git = repo / ".git"
     if git.is_file():
         git = Path(git.read_text().strip().partition(":")[2].strip())
         if not git.is_absolute():
             git = (repo / git).resolve()
-    lock_path = git / "anchored-memory.lock"
+    return git
+
+
+@contextmanager
+def local_store_lock(repo: Path):
+    """Serialize default-store migration, mutations, and recording in one repo."""
+    if fcntl is None:
+        raise OSError("POSIX fcntl locking required")
+    lock_path = git_dir(repo) / "anchored-memory.lock"
     with lock_path.open("a+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
